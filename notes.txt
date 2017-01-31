@@ -1,0 +1,9 @@
+Quanteda Getting Started
+https://cran.r-project.org/web/packages/quanteda/vignettes/quickstart.html
+
+CRAN Task View: Natural Language Processing
+https://cran.r-project.org/web/views/NaturalLanguageProcessing.html
+
+http://de.slideshare.net/fridolin.wild/natural-language-processing-in-r-rnlp
+https://rstudio-pubs-static.s3.amazonaws.com/75206_000f141aa06045f9b1e3fc6d97887959.html#/
+
