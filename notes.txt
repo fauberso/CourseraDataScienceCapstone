@@ -1,9 +1,21 @@
-Quanteda Getting Started
+Quanteda
 https://cran.r-project.org/web/packages/quanteda/vignettes/quickstart.html
+http://www.textasdata.com/2016/02/text-analysis-of-the-10th-republican-presidential-candidate-debate-using-r-and-the-quanteda-package/
 
 CRAN Task View: Natural Language Processing
 https://cran.r-project.org/web/views/NaturalLanguageProcessing.html
 
 http://de.slideshare.net/fridolin.wild/natural-language-processing-in-r-rnlp
 https://rstudio-pubs-static.s3.amazonaws.com/75206_000f141aa06045f9b1e3fc6d97887959.html#/
+
+Text Prediction With R
+http://rstudio-pubs-static.s3.amazonaws.com/39014_76f8487a8fb84ed7849e96846847c295.html
+
+Guide to the ngram Package
+https://cran.r-project.org/web/packages/ngram/vignettes/ngram-guide.pdf
+Text2Vec
+https://github.com/dselivanov/text2vec/wiki/Comparison-with-quanteda
+
+RWeka
+https://www.rdocumentation.org/packages/RWeka/versions/0.4-30
 
