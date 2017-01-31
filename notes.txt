@@ -19,3 +19,5 @@ https://github.com/dselivanov/text2vec/wiki/Comparison-with-quanteda
 RWeka
 https://www.rdocumentation.org/packages/RWeka/versions/0.4-30
 
+Text Mining the Complete Works of William Shakespeare
+https://www.r-bloggers.com/text-mining-the-complete-works-of-william-shakespeare/
