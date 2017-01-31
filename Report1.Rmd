@@ -1,0 +1,55 @@
+---
+title: "Coursera Data Science Keystone Report 1"
+author: "Frederic Auberson"
+date: "February 8, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tm)
+
+```
+
+## Introduction
+
+This is the first milestone report for the Coursera Data Science Keystone project. We will be using the HC Corpora (See the readme file at http://www.corpora.heliohost.org/aboutcorpus.html for details), and perform some analysis on it to explore Natural Language Processing techniques.
+
+```{r getwd, results=TRUE}
+getwd()
+```
+
+## Data Download and Preparation
+
+As instructed, the dataset is loaded from the Coursera site (and not from its original location at Heliohost). It is then read and imported into a tm corpus:
+
+```{r download, results=TRUE}
+if (!file.exists("final")){
+  URL <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+  download.file(url = URL, destfile = "Coursera-SwiftKey.zip", quiet = TRUE)
+  unzip("Coursera-SwiftKey.zip")
+  file.remove("Coursera-SwiftKey.zip")
+}
+
+source <- DirSource("final/en_US")
+corpus <- VCorpus(source, readerControl = list(language="en_US"))
+
+summary(corpus)
+```
+
+```{r filter, results=TRUE}
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, tolower)
+#corpus <- tm_map(corpus, removeWords, stopwords("english"))
+#corpus <- tm_map(corpus, stemDocument, language = "english")
+corpus <- tm_map(corpus, PlainTextDocument)
+```
+
+```{r dtm, results=TRUE}
+dtm <- DocumentTermMatrix(corpus) 
+dtm <- removeSparseTerms(dtm, 0.75)
+inspect(dtm)
+```
+
