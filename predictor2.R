@@ -10,8 +10,11 @@ get3gram <- function() {
     file.remove("Coursera-SwiftKey.zip")
   }
   
-  source <- DirSource("final/en_US", encoding = "UTF-8", mode="binary")
-  corpus <- VCorpus(source, readerControl = list(language="en_US"))
+  texts <- readtext("final/en_US/*.txt", docvarsfrom="filenames", dvsep="\\.", docvarnames=c("lang","name"), encoding="UTF-8")
+  corpus <- corpus(texts)
+  
+  #source <- DirSource("final/en_US", encoding = "UTF-8", mode="binary")
+  #corpus <- VCorpus(source, readerControl = list(language="en_US"))
   
   corpus <- tm_map(corpus, removeNumbers)
   corpus <- tm_map(corpus, removePunctuation)

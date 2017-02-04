@@ -1,3 +1,4 @@
+---
 title: "Coursera Data Science Keystone Report 1"
 author: "Frederic Auberson"
 date: "February 8, 2017"
@@ -7,21 +8,19 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(cache = TRUE)
-library(tm)
-
+library(Matrix)
+library(quanteda)
+library(readtext)
+library(RColorBrewer)
 ```
 
 ## Introduction
 
-This is the first milestone report for the Coursera Data Science Keystone project. We will be using the HC Corpora (See the readme file at http://www.corpora.heliohost.org/aboutcorpus.html for details), and perform some analysis on it to explore Natural Language Processing techniques.
-
-```{r getwd, results=TRUE}
-getwd()
-```
+This is the first milestone report for the Coursera Data Science Keystone project. We will be using the HC Corpora dataset (See the readme file at http://www.corpora.heliohost.org/aboutcorpus.html for details), and perform some analysis on it to explore Natural Language Processing techniques. To do this, we will be using the Quanteda package (https://cran.r-project.org/web/packages/quanteda).
 
 ## Data Download and Preparation
 
-As instructed, the dataset is loaded from the Coursera site (and not from its original location at Heliohost). It is then read and imported into a tm corpus:
+As instructed, the dataset is loaded from the Coursera site (and not from its original location at Heliohost). Let's examine the size of the files we will be working with:
 
 ```{r download, results=TRUE}
 if (!file.exists("final")){
@@ -31,24 +30,122 @@ if (!file.exists("final")){
   file.remove("Coursera-SwiftKey.zip")
 }
 
-source <- DirSource("final/en_US")
-corpus <- VCorpus(source, readerControl = list(language="en_US"))
-
-summary(corpus)
+file.info(list.files("final/en_US", full.names = TRUE))[,c(1,5)]
 ```
 
-```{r filter, results=TRUE}
-corpus <- tm_map(corpus, removeNumbers)
-corpus <- tm_map(corpus, removePunctuation)
-corpus <- tm_map(corpus, stripWhitespace)
-corpus <- tm_map(corpus, tolower)
-#corpus <- tm_map(corpus, removeWords, stopwords("english"))
-#corpus <- tm_map(corpus, stemDocument, language = "english")
-corpus <- tm_map(corpus, PlainTextDocument)
+The dataset is quite large. Attempting to analyse it in whole brought my computer to its knee, despite it being more than generously sized (8 cores and 32GB RAM). Being rather stubborn, I persevered for a while, trying a number of packages (tm, ngram, quanteda, text2vec and more) in the hope that one would be up to the task. I realised much too late that a subset of the data would be more than sufficient to conduct this first analysis, since we can assume the results gathered from a representative sample to be applicable to the whole dataset.
+
+The first step, then, is to make a reduced, sampled version of the files in our dataset:
+
+```{r sample, results=TRUE}
+samplePercent <- 20 # Percentage of lines to keep. Adjust this value as needed.
+
+makeSample <- function(src, dest, filename) {
+  setwd(src)
+  connection <- file(description=filename, open="rb")
+  contents <- readLines(connection, skipNul = TRUE, encoding = "UTF-8")
+  subsample <- sample(contents, size=length(contents)*(samplePercent/100), replace=FALSE)
+  close(connection)
+  setwd(dest)
+  write(subsample, filename, sep="\n")
+}
+
+if (samplePercent!=100) {
+  src <- getwd()
+  dest <- tempdir()
+
+  dir.create(paste(dest, "final", "en_US", sep = "/"), recursive = TRUE)
+
+  makeSample(src, dest, "final/en_US/en_US.blogs.txt")
+  makeSample(src, dest, "final/en_US/en_US.news.txt")
+  makeSample(src, dest, "final/en_US/en_US.twitter.txt")
+
+  setwd(dest)
+}
 ```
 
-```{r dtm, results=TRUE}
-dtm <- DocumentTermMatrix(corpus) 
-dtm <- removeSparseTerms(dtm, 0.75)
-inspect(dtm)
+The stubbornness paid off in a way, since I have gained a good overview for the packages that are available for the type of NLP tasks we're interested in. The Quanteda package, in my opinion, struck the best balance between performance on the one hand, and useability and versatility on the other. For this reason, I've decided to use Quanteda for this report, and possibly for the rest of the Keystone project. 
+
+The now sampled data will be read into a quanteda corpus. All files in the English (en_US) directory are read using the readtext package, taking care to select the right characterset. The file name is split into metadata fields, the first part of the file name being the ISO-3166 locale of the document (e.g. "en_US"), the second indicating the actual content (e.g. "tweets"):
+
+```{r corpus, results=TRUE}
+texts <- readtext("final/en_US/*.txt", docvarsfrom="filenames", dvsep="\\.", docvarnames=c("lang","name"), encoding="UTF-8", verbosity=0)
+c <- corpus(texts)
+saveRDS(c, file="~/corpus.rds") #DELETE THIS
+summary(c) 
 ```
+
+Note that if the subsampling step is skipped, for example by setting the sampling parameter to 100%, the above code chunk will process the original files in full: The sampled files have been generated so as to follow the same naming and directory structure as the originals, so that the rest of the code remains unchanged.
+
+## Data preparation and exploratory analysis
+
+The data first needs to be filtered: Our end goal is building an engine for predicting the next word during text entry. For this reason, we will neither need punctuation, nor numbers: We will not, later on, attempt to predict punctuation, and predicting the numbers in a sentence would be futile (as they will tend to depend wholly on context). For the same reason, we will remove symbols, twitter-specific handles, and URLs. 
+
+For a typical analysis natural language, we would do two filtering steps we will not perform this time: 
+- First, we would remove stopwords, which are often-used words that give little information about the content of a phrase (I, but, it's, we, our...). These word will be kept in this study, as they are word that our prediction engine will try to predict also.
+- Second, we would typically perform stemming, which is the reduction of words to their root ("cooking" and "cooks" become "cook") in order to perform any statistical analysis on the roots rather than on the variants. This will also be left out, since we intend to predict the whole word. Performing stemming in our prediction engine would limit the predictions to the root of the words, which would limit its usefulness (though it would still speed up writing, and so would retain a certain usefulness).
+
+Lastly, we will convert the characters to Lowercase. This decision is discutable, and would probably be inadequate for languages that use extensive capitalisation such as German, but I believe it is a reasonable choice for English or, say, French. In a real-world scenario, we would probably want to correct the cases, in order to predict proper nouns or other classes of words that require capitalisation correctly. This step is intentionally left out as a simplification, all words will be analysed as lowercase. 
+
+Quanteda's terse syntax allows us to pack all this preprocessing in the same call as the one that calculates the number of occurence of each words (or, later, of each ngram). Due to the large number of parameters, and in order to ensure we are using the same parameters later on, we will wrap this call in a function, and call this function to get a first impression of the frequency with which each word occurs:
+
+```{r dfm, results=TRUE}
+getDFM <- function(...) {
+  dfm(c, stem=FALSE, tolower=TRUE, removeNumbers=TRUE, removePunct=TRUE, removeSymbols=TRUE, removeHyphens=FALSE, removeTwitter=TRUE, removeURL=TRUE, ...)
+}
+dfm <- getDFM()
+```
+
+The result is called a Document Feature Matrix (DFM), which lists the occurence of the different terms in each document. To get a first impression, let's plot the number of occurences of the to 30 words:
+
+```{r topfeatures_barplot, results=TRUE}
+par(las=2)
+barplot(rev(topfeatures(dfm, 30)), col=rep(c("#E41A1C","#377EB8"), 15), horiz=TRUE)
+```
+
+Unsurprisingly, the words that occur the most often are the stopwords we elected not to remove from the analysis. The rest is as expected: common words, in lowercase, without punctuation or special symbols. 
+
+Quanteda gives us a convenient way to express this in a much more compact and appealing way by wrapping the "wordcloud" package. Generating a wordcloud from our DFM in Quanteda is a simple one-liner:
+
+```{r wordcloud, results=TRUE}
+textplot_wordcloud(dfm, max.words=200, colors=brewer.pal(n = 9, "Set1"))
+```
+
+Again, the words which stand out are as expected. This plot type allows us to fit significantly more words on less space, but nothing in the 200 words displayed seems out of order or unexpected. As a last check, let's sample some words to get an impression whether less commonly used words also look normal: 
+
+```{r topfeatures_sample, results=TRUE}
+set.seed(123)
+sample(attr(topfeatures(dfm, 100000), "names"), 100)
+```
+
+The result looks fine, all words are roughly in the form we expect.
+
+Quanteda allows us to perform much much advanced analysis on our textual data. The following example compares the lexical diversity of the different sources we have in our corpus:
+
+```{r textstat_lexdiv, results=TRUE}
+par(las=2)
+barplot(textstat_lexdiv(dfm, "CTTR"), pch = 16, horiz=TRUE, xlab = "Lexical Diversity (Carroll Type-Token Ratio (CTTR))", col=c("#E41A1C","#377EB8","#4DAF4A"))
+```
+
+As expected, the diversity in vocabulary found in text written by journalists is significantly higher than that found in blogs or twitter messages.
+
+## Analysis of NGram results
+
+Searching: http://rstudio-pubs-static.s3.amazonaws.com/169109_dcd8434e77bb43da8cf057971a010a56.html
+searchterm <- "I_like"
+dt <- data.table(ngram = features(dfm), count = colSums(dfm), key = "ngram")
+nfeats <- nfeature(dfm)
+hits <- DT[ngram %like% paste("^", searchterm, "_", sep = ""), ngram]
+if (length(hits) > 0) {
+    print("Hit!")
+    baseCount <-dts[[n0]][.(regex)]$count
+    for (hit in hits) {
+      DT[.(hit), ':=' (
+        mle = count/baseCount, 
+        lap = (count+1)/(baseCount+nfeats[[n0]]),
+        gt = (count+1) * (countDFS[[n0]][count+1]/countDFS[[n0]][count]),
+        sbo = count + 0.4*baseCount + stupidBO(ngram, n0-1)
+      )]
+    }
+    DT[hits][order(-sbo)]
+}
