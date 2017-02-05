@@ -38,7 +38,7 @@ The dataset is quite large. Attempting to analyse it in whole brought my compute
 The first step, then, is to make a reduced, sampled version of the files in our dataset:
 
 ```{r sample, results=TRUE}
-samplePercent <- 20 # Percentage of lines to keep. Adjust this value as needed.
+samplePercent <- 1 # Percentage of lines to keep. Adjust this value as needed.
 
 makeSample <- function(src, dest, filename) {
   setwd(src)
@@ -77,7 +77,7 @@ summary(c)
 
 Note that if the subsampling step is skipped, for example by setting the sampling parameter to 100%, the above code chunk will process the original files in full: The sampled files have been generated so as to follow the same naming and directory structure as the originals, so that the rest of the code remains unchanged.
 
-## Data preparation and exploratory analysis
+## Cleanup and exploratory analysis
 
 The data first needs to be filtered: Our end goal is building an engine for predicting the next word during text entry. For this reason, we will neither need punctuation, nor numbers: We will not, later on, attempt to predict punctuation, and predicting the numbers in a sentence would be futile (as they will tend to depend wholly on context). For the same reason, we will remove symbols, twitter-specific handles, and URLs. 
 
@@ -87,20 +87,22 @@ For a typical analysis natural language, we would do two filtering steps we will
 
 Lastly, we will convert the characters to Lowercase. This decision is discutable, and would probably be inadequate for languages that use extensive capitalisation such as German, but I believe it is a reasonable choice for English or, say, French. In a real-world scenario, we would probably want to correct the cases, in order to predict proper nouns or other classes of words that require capitalisation correctly. This step is intentionally left out as a simplification, all words will be analysed as lowercase. 
 
-Quanteda's terse syntax allows us to pack all this preprocessing in the same call as the one that calculates the number of occurence of each words (or, later, of each ngram). Due to the large number of parameters, and in order to ensure we are using the same parameters later on, we will wrap this call in a function, and call this function to get a first impression of the frequency with which each word occurs:
+Quanteda's terse syntax allows us to pack all this preprocessing in the same call as the one that calculates the number of occurence of each words (or, later, of each N-gram). Due to the large number of parameters, and in order to ensure we are using the same parameters later on, we will wrap this call in a function, and call this function to get a first impression of the frequency with which each word occurs:
 
 ```{r dfm, results=TRUE}
 getDFM <- function(...) {
-  dfm(c, stem=FALSE, tolower=TRUE, removeNumbers=TRUE, removePunct=TRUE, removeSymbols=TRUE, removeHyphens=FALSE, removeTwitter=TRUE, removeURL=TRUE, ...)
+  x <- dfm(c, stem=FALSE, tolower=TRUE, removeNumbers=TRUE, removePunct=TRUE, removeSymbols=TRUE, removeHyphens=FALSE, removeTwitter=TRUE, removeURL=TRUE, ...)
+  dfm_trim(x, min_count=2)
 }
 dfm <- getDFM()
 ```
 
-The result is called a Document Feature Matrix (DFM), which lists the occurence of the different terms in each document. To get a first impression, let's plot the number of occurences of the to 30 words:
+Also, to save memory, we're removing any item that appears only once (using Quanteda's dfm_trim function). The result is called a Document Feature Matrix (DFM), which lists the occurence of the different terms in each document. To get a first impression, let's plot the number of occurences of the to 30 words:
 
 ```{r topfeatures_barplot, results=TRUE}
-par(las=2)
-barplot(rev(topfeatures(dfm, 30)), col=rep(c("#E41A1C","#377EB8"), 15), horiz=TRUE)
+colScheme<-brewer.pal(n = 9, "Set1")
+par(las=2, cex.axis=.7)
+barplot(rev(topfeatures(dfm, 30)), col=rep(colScheme[1:2], 15), horiz=TRUE)
 ```
 
 Unsurprisingly, the words that occur the most often are the stopwords we elected not to remove from the analysis. The rest is as expected: common words, in lowercase, without punctuation or special symbols. 
@@ -108,14 +110,14 @@ Unsurprisingly, the words that occur the most often are the stopwords we elected
 Quanteda gives us a convenient way to express this in a much more compact and appealing way by wrapping the "wordcloud" package. Generating a wordcloud from our DFM in Quanteda is a simple one-liner:
 
 ```{r wordcloud, results=TRUE}
-textplot_wordcloud(dfm, max.words=200, colors=brewer.pal(n = 9, "Set1"))
+textplot_wordcloud(dfm, max.words=200, colors=colScheme)
 ```
 
 Again, the words which stand out are as expected. This plot type allows us to fit significantly more words on less space, but nothing in the 200 words displayed seems out of order or unexpected. As a last check, let's sample some words to get an impression whether less commonly used words also look normal: 
 
-```{r topfeatures_sample, results=TRUE}
+```{r random_features, results=TRUE}
 set.seed(123)
-sample(attr(topfeatures(dfm, 100000), "names"), 100)
+featnames(dfm_sample(dfm, 100, replace=FALSE, what="features"))
 ```
 
 The result looks fine, all words are roughly in the form we expect.
@@ -123,13 +125,43 @@ The result looks fine, all words are roughly in the form we expect.
 Quanteda allows us to perform much much advanced analysis on our textual data. The following example compares the lexical diversity of the different sources we have in our corpus:
 
 ```{r textstat_lexdiv, results=TRUE}
-par(las=2)
-barplot(textstat_lexdiv(dfm, "CTTR"), pch = 16, horiz=TRUE, xlab = "Lexical Diversity (Carroll Type-Token Ratio (CTTR))", col=c("#E41A1C","#377EB8","#4DAF4A"))
+par(las=3, cex.axis=.8,  mgp=c(3,1,0))
+barplot(textstat_lexdiv(dfm, "CTTR"), pch = 16, horiz=TRUE, xlab = "Lexical Diversity (Carroll Type-Token Ratio (CTTR))", col=colScheme[1:3])
 ```
 
-As expected, the diversity in vocabulary found in text written by journalists is significantly higher than that found in blogs or twitter messages.
+As expected, the diversity in vocabulary found in text written by journalists is significantly higher than that found in blogs or twitter messages. But rather than continue sampling Quanteda's many possibilities, we'll have a more in-depth look at the generation of n-grams, since these will be the basis on which we build our text prediction engine. 
 
-## Analysis of NGram results
+## Analysis of N-Gram results
+
+An N-Gram is a sequence of words that actually appears in a corpus. An approach in building a text prediction engine would be to extract N-Grams from our corpus, and count the number of occurences of each. Then, when text is entered into our application, we would search for N-Grams that begins with the N-1 words last typed, and select the N-Gram that occurs the most often: The Nth word in that N-Gram is the most likely candidate, and we would propose that word to the user as the predicted word.
+
+We actually have already computed the number of occurences for a special case of N-Grams: The Document Feature Matrix (DFM) we have calculated returns the number of occurence of each word, and each word can be considered as being the trivial case of an N-Gram with N=1 -- a 1-Gram, or Unigram. Higher-order N-Grams can be calculated using the same method, which we had declated while calculating our DFM:
+
+```{r unigram, results=TRUE}
+unigram <- dfm #No need to compute this a second time!
+```
+```{r bigram, results=TRUE}
+bigram <- getDFM(ngrams=2)
+```
+```{r trigram, results=TRUE}
+trigram <- getDFM(ngrams=3)
+```
+```{r quadrigram, results=TRUE}
+quadrigram <- getDFM(ngrams=4)
+```
+
+We can, as before, generate charts showing the number of occurence of each N-Gram:
+
+```{r all_ngrams, results=TRUE}
+par(las=2, cex.axis=.7)
+topNgrams<-rev(c(topfeatures(unigram, 10), topfeatures(bigram, 10), topfeatures(trigram, 10), topfeatures(quadrigram, 10)))
+colors<-rev(c(rep(colScheme[1:2], 5),rep(colScheme[3:4], 5),rep(colScheme[5:6], 5),rep(colScheme[7:8], 5)))
+barplot(topNgrams, col=colors, horiz=TRUE, log="y")
+```
+
+## Next steps: Developing a predictive model
+
+
 
 Searching: http://rstudio-pubs-static.s3.amazonaws.com/169109_dcd8434e77bb43da8cf057971a010a56.html
 searchterm <- "I_like"
