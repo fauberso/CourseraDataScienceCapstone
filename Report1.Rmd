@@ -1,7 +1,7 @@
 ---
 title: "Coursera Data Science Keystone Report 1"
 author: "Frederic Auberson"
-date: "February 8, 2017"
+date: "February 6, 2017"
 output: html_document
 ---
 
@@ -11,6 +11,7 @@ knitr::opts_chunk$set(cache = TRUE)
 library(Matrix)
 library(quanteda)
 library(readtext)
+#install readtext using devtools::install_github("kbenoit/readtext")
 library(RColorBrewer)
 ```
 
@@ -35,9 +36,9 @@ file.info(list.files("final/en_US", full.names = TRUE))[,c(1,5)]
 
 The dataset is quite large. Attempting to analyse it in whole brought my computer to its knee, despite it being more than generously sized (8 cores and 32GB RAM). Being rather stubborn, I persevered for a while, trying a number of packages (tm, ngram, quanteda, text2vec and more) in the hope that one would be up to the task. I realised much too late that a subset of the data would be more than sufficient to conduct this first analysis, since we can assume the results gathered from a representative sample to be applicable to the whole dataset.
 
-The first step, then, is to make a reduced, sampled version of the files in our dataset:
+For this reason, we will perform the analysis on a subset of the data: We will use a similar directory structure as that used with the original data, but which contains only a random 1% of the original number of lines. The code used to generate these files has been moved, for conciseness' sake, to Appendix A, and is not required to follow this analysis, as it can be conducted in the same manner on the complete dataset, if sufficient resources are available.
 
-```{r sample, results=TRUE}
+```{r sample, echo=FALSE, results=TRUE}
 samplePercent <- 1 # Percentage of lines to keep. Adjust this value as needed.
 
 makeSample <- function(src, dest, filename) {
@@ -66,7 +67,7 @@ if (samplePercent!=100) {
 
 The stubbornness paid off in a way, since I have gained a good overview for the packages that are available for the type of NLP tasks we're interested in. The Quanteda package, in my opinion, struck the best balance between performance on the one hand, and useability and versatility on the other. For this reason, I've decided to use Quanteda for this report, and possibly for the rest of the Keystone project. 
 
-The now sampled data will be read into a quanteda corpus. All files in the English (en_US) directory are read using the readtext package, taking care to select the right characterset. The file name is split into metadata fields, the first part of the file name being the ISO-3166 locale of the document (e.g. "en_US"), the second indicating the actual content (e.g. "tweets"):
+The sampled data is first read into a quanteda corpus. All files in the English (en_US) directory are read using the readtext package, taking care to select the right characterset. The file name is split into metadata fields, the first part of the file name being the ISO-3166 locale of the document (e.g. "en_US"), the second indicating the actual content (e.g. "tweets"):
 
 ```{r corpus, results=TRUE}
 texts <- readtext("final/en_US/*.txt", docvarsfrom="filenames", dvsep="\\.", docvarnames=c("lang","name"), encoding="UTF-8", verbosity=0)
@@ -75,7 +76,7 @@ saveRDS(c, file="~/corpus.rds") #DELETE THIS
 summary(c) 
 ```
 
-Note that if the subsampling step is skipped, for example by setting the sampling parameter to 100%, the above code chunk will process the original files in full: The sampled files have been generated so as to follow the same naming and directory structure as the originals, so that the rest of the code remains unchanged.
+Note that if the subsampling step was to be skipped, for example by setting the sampling parameter to 100%, or by omitting the sampling step detailed in Appendix A, the above code chunk would process the original files in full: The sampled files have been generated so as to follow the same naming and directory structure as the originals, so that the rest of the code remains unchanged.
 
 ## Cleanup and exploratory analysis
 
@@ -101,7 +102,7 @@ Also, to save memory, we're removing any item that appears only once (using Quan
 
 ```{r topfeatures_barplot, results=TRUE}
 colScheme<-brewer.pal(n = 9, "Set1")
-par(las=2, cex.axis=.7)
+par(las=2, cex.axis=.7, mar=c(5,5,1,1))
 barplot(rev(topfeatures(dfm, 30)), col=rep(colScheme[1:2], 15), horiz=TRUE)
 ```
 
@@ -109,7 +110,8 @@ Unsurprisingly, the words that occur the most often are the stopwords we elected
 
 Quanteda gives us a convenient way to express this in a much more compact and appealing way by wrapping the "wordcloud" package. Generating a wordcloud from our DFM in Quanteda is a simple one-liner:
 
-```{r wordcloud, results=TRUE}
+```{r wordcloud, results=TRUE, fig.width=4, fig.height=4}
+par(mar=c(1,1,1,1))
 textplot_wordcloud(dfm, max.words=200, colors=colScheme)
 ```
 
@@ -124,8 +126,8 @@ The result looks fine, all words are roughly in the form we expect.
 
 Quanteda allows us to perform much much advanced analysis on our textual data. The following example compares the lexical diversity of the different sources we have in our corpus:
 
-```{r textstat_lexdiv, results=TRUE}
-par(las=3, cex.axis=.8,  mgp=c(3,1,0))
+```{r textstat_lexdiv, results=TRUE,  fig.width=7, fig.height=3}
+par(las=2, cex.axis=.75,  mgp=c(3,1,0), mar=c(5,7,1,1))
 barplot(textstat_lexdiv(dfm, "CTTR"), pch = 16, horiz=TRUE, xlab = "Lexical Diversity (Carroll Type-Token Ratio (CTTR))", col=colScheme[1:3])
 ```
 
@@ -152,32 +154,49 @@ quadrigram <- getDFM(ngrams=4)
 
 We can, as before, generate charts showing the number of occurence of each N-Gram:
 
-```{r all_ngrams, results=TRUE}
-par(las=2, cex.axis=.7)
+```{r all_ngrams, results=TRUE, fig.width=8, fig.height=8}
+par(las=2, cex.axis=.7, mar=c(5,8,1,1))
 topNgrams<-rev(c(topfeatures(unigram, 10), topfeatures(bigram, 10), topfeatures(trigram, 10), topfeatures(quadrigram, 10)))
 colors<-rev(c(rep(colScheme[1:2], 5),rep(colScheme[3:4], 5),rep(colScheme[5:6], 5),rep(colScheme[7:8], 5)))
-barplot(topNgrams, col=colors, horiz=TRUE, log="y")
+barplot(topNgrams, col=colors, horiz=TRUE, log="x")
 ```
 
 ## Next steps: Developing a predictive model
 
+The N-Grams give us the model we need to build a prediction engine. The value of N itself is a tradeoff between prediction accuracy and resources consumed: A quadrigram would deliver excellent results, since it bases its prediction on a lot of context, but it would consume an unreasonable amount of memory (over 16GB in the small 1% sample used here). A bigram would be the smallest structure useable to conduct predictions, but it would provide inaccurate results, since a prediction would be based on the most likely term to follow a single word. A trigram might be a reasonable tradeoff.
 
+Once N has been chosen, the prediction mechanism can be built. One simple method is to scan the list of known N-Grams in search of the last N-1 words typed, and return the Nth word in the trigram that occurs the most frequently. 
 
-Searching: http://rstudio-pubs-static.s3.amazonaws.com/169109_dcd8434e77bb43da8cf057971a010a56.html
-searchterm <- "I_like"
-dt <- data.table(ngram = features(dfm), count = colSums(dfm), key = "ngram")
-nfeats <- nfeature(dfm)
-hits <- DT[ngram %like% paste("^", searchterm, "_", sep = ""), ngram]
-if (length(hits) > 0) {
-    print("Hit!")
-    baseCount <-dts[[n0]][.(regex)]$count
-    for (hit in hits) {
-      DT[.(hit), ':=' (
-        mle = count/baseCount, 
-        lap = (count+1)/(baseCount+nfeats[[n0]]),
-        gt = (count+1) * (countDFS[[n0]][count+1]/countDFS[[n0]][count]),
-        sbo = count + 0.4*baseCount + stupidBO(ngram, n0-1)
-      )]
-    }
-    DT[hits][order(-sbo)]
+The list of N-Grams is potentially large, and scanning the list may end up being computationally intensive, in particular considering it has to be done every time the input changes. For that reason, it is advisable to store the N-Grams in a structure that allow an efficient lookup to be performed: A hash table. There are a number of ways to compute Hash tables in R, the native one being using an Environment object (See https://www.r-bloggers.com/hash-table-performance-in-r-part-i/ for details). Another one is by using specialised packages, such as hashmap.
+
+But possibly even more efficient than implementing our own mechanism for prediction is using one that is already implemented. Before implementing my own solution, I intend to check the existing R packages for functionality that can be used instead.
+
+## Appendix A: Simple method to sample the data
+
+For reference, the method used to sample the data is as follows. It reads the files provided in the final/en_US subdirectory, and creates sampled files in a similar directory structure unter the host's temp directory, then changed the working directory to that directory. This means that any subsequent code may run on the sampled data in exactly the same way as if it was running on the original data.
+
+```{r eval=FALSE}
+samplePercent <- 1 # Percentage of lines to keep. Adjust this value as needed.
+
+makeSample <- function(src, dest, filename) {
+  setwd(src)
+  connection <- file(description=filename, open="rb")
+  contents <- readLines(connection, skipNul = TRUE, encoding = "UTF-8")
+  subsample <- sample(contents, size=length(contents)*(samplePercent/100), replace=FALSE)
+  close(connection)
+  setwd(dest)
+  write(subsample, filename, sep="\n")
 }
+
+if (samplePercent!=100) {
+  src <- getwd()
+  dest <- tempdir()
+
+  dir.create(paste(dest, "final", "en_US", sep = "/"), recursive = TRUE)
+
+  makeSample(src, dest, "final/en_US/en_US.blogs.txt")
+  makeSample(src, dest, "final/en_US/en_US.news.txt")
+  makeSample(src, dest, "final/en_US/en_US.twitter.txt")
+
+  setwd(dest)
+```
