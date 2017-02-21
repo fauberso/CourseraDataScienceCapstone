@@ -1,3 +1,4 @@
 final/
 *_cache/
 *_files/
+*.rds
