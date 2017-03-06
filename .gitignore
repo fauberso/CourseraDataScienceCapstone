@@ -1,4 +1,7 @@
 final/
+data_*/
+sample_*/
+testData/
 *_cache/
 *_files/
 *.rds
