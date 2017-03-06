@@ -1,7 +1,6 @@
 library(Matrix)
 library(quanteda)
 library(readtext)
-library(hashmap)
 library(parallel)
 
 #install readtext using devtools::install_github("kbenoit/readtext")
@@ -142,41 +141,51 @@ removeFirstTerm <- function(term) {
 # Return the entire model, but using probabilities instead of frequencies.
 #
 filterModel <- function(model, backoff) {
-  
   cl <- makeCluster(8)
-  clusterExport(cl=cl, varlist=c("removeFirstTerm", "k"))  
-
+  clusterExport(cl=cl, varlist=c("removeFirstTerm", "k", "discProp")) 
+  
   modelDisc <- model[[discProp]]
   backoffDisc <- backoff[[discProp]]
 
-  results <- parSapply(cl, names(sapply(model, names)) , function(name) {
-    # Get Frequencies for the current ngram, and the frequencies for the backed off n-1gram 
-    values <- model[name][[1]]
+  #results <- sapply(1:length(model), function(i) {
+  results <- parSapply(cl, 1:length(model), function(i) {
+
+    values <- model[[i]]
+    name <- names(model)[i]
+
+    if(name==discProp) {
+      retval <- list()
+      retval[[name]]<-values
+      return(retval)
+    }
+    
     backoffValues <- backoff[removeFirstTerm(name)][[1]]
-    # Remove from the n-1gram any values we already have as part of the ngram
+
+    #Remove from the n-1gram any values we already have as part of the ngram
     # backoffValues <- backoffValues[!(names(backoffValues) %in% names(values))]
+    
     # Convert the frequencies to probabilities
     values <- ifelse(values > k, values, modelDisc[values]*values)/sum(values)
     backoffValues <- ifelse(backoffValues > k, backoffValues, backoffDisc[backoffValues]*backoffValues)/sum(backoffValues)
     backoffValues <- backoffValues * (1-sum(values))
+    
     # If probability from a value is lower than the backed off probability of the same value,
     # then there's no point in keeping the value. We will used the backed off probability in the predictor anyway
-    if (length(values)>2) browser()
-    #values <- values[backoffValues[names(backoffValues)==names(values)]<values]
-    filter <- Vectorize(function(x, name) backoffValues[name]<x)
+    filter <- Vectorize(function(x, name) is.na(backoffValues[name]) || backoffValues[name]<x)
     values <- values[filter(values, names(values))]
     
-    if(length(values)==0) 
-      return(NULL)
-    else
-      return(values) 
+    # Lastly, remove all values below a certain threshold. This will prevent us from keeping very long list with
+    # values that are not very significant
+    values <- values[values>0.001]
+    
+    retval <- list()
+    retval[[name]]<-values
+    retval
   })
   
   stopCluster(cl)
-  
-  results
-  #Fehler in checkForRemoteErrors(val) :
-  #  one node produced an error: Eingaben mit Länge 0 können nicht mit Eingaben anderer Länge gemischt werden
+  results[!sapply(results, function(x) is.null(x) || length(x)==0)] 
+
 }
 
 
@@ -252,21 +261,24 @@ computeFiles <- function(samplePercent=1, parallel=TRUE) {
   
   # Filter results and combine into 1 file
   if (!file.exists(modelFileName)){
+    print(ls())
     model <- list()
     debugLog("Removing 3-grams less significant than their backed off 2-grams...")
-    model[[3]] <- filterModel(readRDS(file=paste(dataDir, "predictor.3.rds", sep="/")),
-                              readRDS(file=paste(dataDir, "predictor.2.rds", sep="/")))
+    pred3 <- readRDS(file=paste(dataDir, "predictor.3.rds", sep="/"))
+    pred2 <- readRDS(file=paste(dataDir, "predictor.2.rds", sep="/"))
+    model[[3]] <- filterModel(pred3,pred2)
     debugLog("Removing 3-grams less significant than their backed off 2-grams...")
-    model[[2]] <- filterModel(readRDS(file=paste(dataDir, "predictor.2.rds", sep="/")),
-                              readRDS(file=paste(dataDir, "predictor.1.rds", sep="/")))
+    rm(pred3)
+    pred1 <- readRDS(file=paste(dataDir, "predictor.1.rds", sep="/"))
+    model[[2]] <- filterModel(pred2,pred1)
     debugLog("Removing 1-grams with low significance...")
-    model[[1]] <- filterModel(readRDS(file=paste(dataDir, "predictor.1.rds", sep="/")),
-                              list());
+    rm(pred2)
+    model[[1]] <- filterModel(pred1, list());
+    rm(pred1)
+    saveRDS(model, file=modelFileName)
   }
   
-  saveRDS(model, file=modelname)
-  
-  model
+  TRUE
 }
 
 batchCompute <- function() {

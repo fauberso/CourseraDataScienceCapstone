@@ -41,4 +41,3 @@ load <- function(samplePercent=1) {
   assign("model", model, pos=globalenv())
   assign("residuals", residuals, pos=globalenv())
 }
-
