@@ -267,7 +267,7 @@ computeFiles <- function(samplePercent=1, parallel=TRUE) {
     pred3 <- readRDS(file=paste(dataDir, "predictor.3.rds", sep="/"))
     pred2 <- readRDS(file=paste(dataDir, "predictor.2.rds", sep="/"))
     model[[3]] <- filterModel(pred3,pred2)
-    debugLog("Removing 3-grams less significant than their backed off 2-grams...")
+    debugLog("Removing 2-grams less significant than their backed off 1-grams...")
     rm(pred3)
     pred1 <- readRDS(file=paste(dataDir, "predictor.1.rds", sep="/"))
     model[[2]] <- filterModel(pred2,pred1)

@@ -1,0 +1,11 @@
+name: NimbleType
+title: NimbleType
+account: fauberso
+server: shinyapps.io
+appId: 161742
+bundleId: 736794
+url: https://fauberso.shinyapps.io/NimbleType/
+when: 1488892663.34066
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: model.10.rds

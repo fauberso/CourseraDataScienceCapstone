@@ -1,0 +1,50 @@
+---
+title: '"NimbleType"'
+subtitle: "<br>Predictive text entry in webapps:<br>An example implemented in the R Language"
+author: "Frédéric Auberson"
+date: "March 7, 2017"
+output:
+  ioslides_presentation:
+    widescreen: true
+    smaller: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## NimbleType Overview
+
+NimbleType is a sample application showing a simple textbox that features a predictive text entry function -- think predictive text entry as you probably know from your smartphone. This sample application shows how to mine a text corpus (a mix of tweets, blog entries and news items was used), and generate a prediction model. When fed a few  words, this model will output a list of probable following words and a probability for each word. 
+
+The web application can be tried out here: <https://fauberso.shinyapps.io/NimbleType/>.
+
+This presentation will give an overview of the steps needed to implements this functionality: Mining the text to extract a prediction model, filtering this model in order to reduce the resource requirements to a level acceptable for a web application or mobile environment, and finally using this model in the context of a web application. 
+
+The text corpus used was a 556MB dataset provided by Coursera, which contained english-language Tweets, Blog entries, and News items. The process described here can, in principle, be used with other sources: The accuracy of the predicted words should be significantly better if the source material used relates to the domain of the application in which the predictions will be made (If at all possible, use previous data from the application for which predictive text entry is being built). 
+
+To put the processing times detailed in this presentation into context, the computer used was a Intel Core i7-3770 machine with 32 GB of memory, running Windows 10.
+
+## Building a model for predictive text entry
+
+The basic idea behind is rather simple: The texts used as input are split in groups of n+1 consecutive words: Each of these observations tells us there's a certain chance that a given word follows the n (for example, 3) previous words. If we sum up identical observation, we get frequencies. If we gather observations in groups with the same preceding n words, we get a list of candidates that might follow the n previous words, and their frequencies. Divide these frequencies by the group's totals, and you get probabilities for each predicted word. An R package called [quanteda](https://cran.r-project.org/web/packages/quanteda/vignettes/quickstart.html) is used to compute a list of n+1 words, which is then split in the n first words (the "nGram") and the predicted following word. To rearrange this list into predictions grouped by preceding nGram, a [Hashmap](https://www.r-bloggers.com/hash-table-performance-in-r-part-i/) is used, which speeds up lookups significantly, and allowed us to process up to 20% of our corpus in a little more than a day. As a Hashmap implementation, an R [Environment](https://stat.ethz.ch/R-manual/R-devel/library/base/html/environment.html) object was used.
+
+But there is a certain probability that the word that will follow 3 words already entered is one that we have not encountered in our corpus. This implies that the true probability of each of the words we've found occuring in a new context is slightly lower that what we get by diving frequencies by the total for a group: They do not add up to 100%. The value (<1) by which we must multiply that first value to get the actual probability is called the [Good-Turing discount](https://en.wikipedia.org/wiki/Good%E2%80%93Turing_frequency_estimation), after its inventors, Alan Turing and I. J. Good. This value depends on the number of observations that feature a given frequency (the "frequency of frequencies"), and so it must be calculated at this stage. The values converge rapidly towards 1, and one popular optimisation is to use a value of 1 for any frequency above 5, effectively only calculating the discount for observations made 5 times or less.
+
+## Minimising resource consumption
+
+Our model can already be used for predictions: Given n words, the predictions for the following word are taken from the n-grams table. If it were not found, there would still be a good chance we'd find it in a table made for the last n-1 words. For that reason, we'll build several models for different n: One for the word following a 3-gram (I_am_so -> happy), another for 2-grams (am_so -> happy), and one for individual word pairs. This yields rather large models, that both consume lots of storage, and take time to search.
+
+[Katz's back-off model](https://en.wikipedia.org/wiki/Katz's_back-off_model) describes searching the n-1Gram table additionally to the nGram table when predicting the word that follows n others. It also describe how to calculate the probability of the words in the n-1Gram: Since the probabilities in the nGram table do not add up to 100%, there's a "residual probability" that indicates the correct word might be in the lower nGram tables: Multiplying that residual probability with the probabilities from the lower nGram tables yields their actual probability. 
+
+This is our first optimisation potential: Because the lower nGram tables generally show higher frequencies (a group of 3 words repeats on average more often than a group of 4), it often happens that, for a given group of n words, the following word is predicted in both the nGram table, and the n-1Gram table, with the n-1Gram table giving the higher probability. During runtime, we'd always use the result from the n-1Gram table, so we can filter out the result from the nGram table without losing anything. During this step, we can also filter out values with a generally low probability (>0.1%).
+
+This filtering roughly halves the size of the models, also speeding up the queries. But it is computationally intensive: processing 2% of the data can be done in 2 hours, but 10% already takes more than 35 hours.
+
+## Building the web application
+
+The result of the filtering step is our final model: A list of 3-Grams, 2-Grams and single words, and for each entry in these lists a number of predicted words and their probabilities. Given a number of words, we can use [Katz's back-off model](https://en.wikipedia.org/wiki/Katz's_back-off_model) to calculate a table of predicted following words and their probabilities, which we can propose to the user as he types. If the user is currently typing a word, we can filter this list for all candidates that start with the letters already typed. All this must be done in the least intrusive way possible.
+
+To do this, we implemented a [Shiny](https://shiny.rstudio.com/) application, where the predictions are computed on the backend. As the user types into a textbox on the frontend, requests are sent to the backend, where the models are searched and a prediction table is made based on the previous word and the letters of the current word already typed. This best-guess result is then sent to the front-end, where it is displayed. A piece of client-side logic, written in javascript, adds the predicted word (or word ending) in the text box and automatically selects it: The user has the option of ignoring the prediction, since it will be overwritten if a key is pressed. Or the prediction can be accepted, by moving the cursor to the right (by pressing the right arrow, for example). This closely mimics the behaviour found in mobile phones, which most users will be familiar with.
+
+The resulting demo application is hosted in shinyapps.io, and can be tested here: <https://fauberso.shinyapps.io/NimbleType/>.
